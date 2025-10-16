@@ -62,7 +62,7 @@
     <div id="calendar-timer" class="timer-main">...</div>
     
     <div class="timer-label" style="margin-top: 50px;">Working Time Remaining</div>
-    <div id="work-timer" class="timer-secondary">...</div>
+    <div id="work-timer" class="timer-secondary">(Paused)</div>
 
     <div id="congrats-message" class="congrats-message" style="display: none;">
         Congratulations, you have retired.
@@ -70,19 +70,15 @@
 </div>
 
 <script>
-    // --- Global state variables for the timer ---
+    // --- Global state variables ---
     let retirementTargetDate;
     const nonWorkingDaysSet = new Set();
     let timerInterval = null;
-    let lastWorkTimeDisplay = "(Calculating...)";
+    let lastWorkTimeDisplay = "(Paused)";
 
     // --- Configuration ---
     const config = {
-        // V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V
-        // V V V  >>> EDIT THIS LINE WITH YOUR RETIREMENT DATE <<< V V V
         retirementDate: "2026-01-09", 
-        // ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
-
         bcHolidays: [
             "2025-11-11", "2025-12-25", "2026-01-01"
         ],
@@ -94,35 +90,90 @@
         ]
     };
 
+    const workDayStartHour = 9;
+    const workDayEndHour = 17;
+
     // This function runs automatically when the page has loaded
     document.addEventListener('DOMContentLoaded', () => {
         startTimer();
     });
 
     function startTimer() {
-        // Set retirement target to 5 PM on the selected day
         retirementTargetDate = new Date(config.retirementDate + 'T17:00:00');
         
-        // Combine all non-working days into a single Set for fast lookups
         const allExclusionDates = [
-            ...config.bcHolidays,
-            ...config.shutdownDays,
-            ...config.vacationDays
+            ...config.bcHolidays, ...config.shutdownDays, ...config.vacationDays
         ];
         allExclusionDates.forEach(dateStr => nonWorkingDaysSet.add(dateStr));
 
-        // Start the timer loop
+        // **NEW:** Calculate the initial work time immediately on load
+        calculateTotalWorkTime(); 
+
         if (timerInterval) clearInterval(timerInterval);
         timerInterval = setInterval(updateTimers, 10);
-        updateTimers(); // Run once immediately
+        updateTimers();
+    }
+
+    // **NEW FUNCTION:** Calculates the total remaining work time from scratch.
+    function calculateTotalWorkTime() {
+        const now = new Date();
+        let totalWorkSeconds = 0;
+
+        // Part 1: Calculate work seconds for today, if any
+        const dayOfWeek = now.getDay();
+        const currentHour = now.getHours();
+        const nowStr = now.toISOString().split('T')[0];
+        const isWorkDayToday = dayOfWeek > 0 && dayOfWeek < 6 && !nonWorkingDaysSet.has(nowStr);
+
+        if (isWorkDayToday && currentHour < workDayEndHour) {
+             const startOfWorkToday = new Date(now);
+             startOfWorkToday.setHours(workDayStartHour, 0, 0, 0);
+             const endOfWorkToday = new Date(now);
+             endOfWorkToday.setHours(workDayEndHour, 0, 0, 0);
+             
+             // Use the later of now or the start of the workday
+             const effectiveStart = now > startOfWorkToday ? now : startOfWorkToday;
+             totalWorkSeconds += Math.max(0, (endOfWorkToday - effectiveStart) / 1000);
+        }
+
+        // Part 2: Loop through all full days between now and retirement
+        let currentDate = new Date(now);
+        currentDate.setDate(currentDate.getDate() + 1);
+        currentDate.setHours(0, 0, 0, 0);
+        
+        const retirementDayStart = new Date(retirementTargetDate);
+        retirementDayStart.setHours(0, 0, 0, 0);
+
+        while (currentDate <= retirementDayStart) {
+            const loopDayOfWeek = currentDate.getDay();
+            const isWeekend = (loopDayOfWeek === 0 || loopDayOfWeek === 6);
+            const loopDateStr = currentDate.toISOString().split('T')[0];
+
+            if (!isWeekend && !nonWorkingDaysSet.has(loopDateStr)) {
+                totalWorkSeconds += (workDayEndHour - workDayStartHour) * 3600; // Add 8 hours
+            }
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+
+        // Convert total seconds to a display format
+        const workDayInSeconds = 8 * 3600;
+        const workDays = Math.floor(totalWorkSeconds / workDayInSeconds);
+        let remainder = totalWorkSeconds % workDayInSeconds;
+        const workHours = Math.floor(remainder / 3600);
+        remainder %= 3600;
+        const workMinutes = Math.floor(remainder / 60);
+        const workSeconds = Math.floor(remainder % 60);
+
+        // Update the global display variable
+        lastWorkTimeDisplay = 
+            `${workDays}d ${String(workHours).padStart(2, '0')}h ${String(workMinutes).padStart(2, '0')}m ${String(workSeconds).padStart(2, '0')}s`;
     }
 
     function updateTimers() {
         const now = new Date();
         const diff = retirementTargetDate - now;
 
-        // --- 1. Handle Retired State ---
-        if (diff <= 0) {
+        if (diff <= 0) { /* ... retired state logic (unchanged) ... */
             clearInterval(timerInterval);
             document.getElementById('countdown-screen').classList.add('retired');
             document.getElementById('calendar-timer').textContent = "0:00:00:00.00";
@@ -132,19 +183,16 @@
             return;
         }
 
-        // --- 2. Update Calendar Timer ---
+        /* ... calendar timer update logic (unchanged) ... */
         const days = Math.floor(diff / (1000 * 60 * 60 * 24));
         const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
         const minutes = Math.floor((diff / (1000 * 60)) % 60);
         const seconds = Math.floor((diff / 1000) % 60);
         const hundredths = Math.floor((diff % 1000) / 10);
-
         document.getElementById('calendar-timer').textContent = 
             `${days}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
 
-        // --- 3. Update Working Time Timer ---
-        const workDayStartHour = 9;
-        const workDayEndHour = 17;
+        // **MODIFIED:** Logic is now much simpler
         const dayOfWeek = now.getDay();
         const currentHour = now.getHours();
         const nowStr = now.toISOString().split('T')[0];
@@ -156,47 +204,14 @@
         );
 
         if (isCurrentlyWorkTime) {
-            let totalWorkSeconds = 0;
-            const endOfWorkToday = new Date(now);
-            endOfWorkToday.setHours(workDayEndHour, 0, 0, 0);
-            totalWorkSeconds += (endOfWorkToday - now) / 1000;
-
-            let currentDate = new Date(now);
-            currentDate.setDate(currentDate.getDate() + 1);
-            currentDate.setHours(0, 0, 0, 0);
-
-            const retirementDayStart = new Date(retirementTargetDate);
-            retirementDayStart.setHours(0, 0, 0, 0);
-
-            while (currentDate <= retirementDayStart) {
-                const loopDayOfWeek = currentDate.getDay();
-                const isWeekend = (loopDayOfWeek === 0 || loopDayOfWeek === 6);
-                const loopDateStr = currentDate.toISOString().split('T')[0];
-
-                if (!isWeekend && !nonWorkingDaysSet.has(loopDateStr)) {
-                    totalWorkSeconds += (workDayEndHour - workDayStartHour) * 3600;
-                }
-                currentDate.setDate(currentDate.getDate() + 1);
-            }
-
-            const workDayInSeconds = 8 * 3600;
-            const workDays = Math.floor(totalWorkSeconds / workDayInSeconds);
-            let remainder = totalWorkSeconds % workDayInSeconds;
-            const workHours = Math.floor(remainder / 3600);
-            remainder %= 3600;
-            const workMinutes = Math.floor(remainder / 60);
-            const workSeconds = Math.floor(remainder % 60);
-
-            lastWorkTimeDisplay = 
-                `${workDays}d ${String(workHours).padStart(2, '0')}h ${String(workMinutes).padStart(2, '0')}m ${String(workSeconds).padStart(2, '0')}s`;
-            document.getElementById('work-timer').textContent = lastWorkTimeDisplay;
-
-        } else {
-            document.getElementById('work-timer').textContent = lastWorkTimeDisplay;
+            // If it's work time, we re-calculate live on every tick
+            calculateTotalWorkTime(); 
         }
+        
+        // Always display the last known value (either from initial load or live tick)
+        document.getElementById('work-timer').textContent = lastWorkTimeDisplay;
     }
 </script>
 
 </body>
-
 </html>
