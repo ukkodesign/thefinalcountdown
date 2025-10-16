@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Retirement Countdown Timer</title>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #000000; /* Start with black background */
+        }
+        .countdown-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            z-index: 1000;
+            transition: background-color 1s ease;
+        }
+        .timer-main {
+            font-family: 'monospace', 'Courier New', Courier;
+            font-size: 12vw; /* Scales with screen width */
+            font-weight: bold;
+            letter-spacing: -2px;
+        }
+        .timer-secondary {
+            font-family: 'monospace', 'Courier New', Courier;
+            font-size: 5vw;
+            margin-top: 20px;
+            opacity: 0.8;
+        }
+        .timer-label {
+            font-size: 2vw;
+            opacity: 0.6;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+        .congrats-message {
+            font-size: 4vw;
+            margin-top: 40px;
+            color: #ffffff;
+        }
+        .countdown-screen.retired {
+            background-color: #27ae60; /* Green background */
+        }
+    </style>
+</head>
+<body>
+
+<div id="countdown-screen" class="countdown-screen">
+    <div class="timer-label">Time Until Retirement</div>
+    <div id="calendar-timer" class="timer-main">...</div>
+    
+    <div class="timer-label" style="margin-top: 50px;">Working Time Remaining</div>
+    <div id="work-timer" class="timer-secondary">...</div>
+
+    <div id="congrats-message" class="congrats-message" style="display: none;">
+        Congratulations, you have retired.
+    </div>
+</div>
+
+<script>
+    // --- Global state variables for the timer ---
+    let retirementTargetDate;
+    const nonWorkingDaysSet = new Set();
+    let timerInterval = null;
+    let lastWorkTimeDisplay = "(Calculating...)";
+
+    // --- Configuration ---
+    const config = {
+        // V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V
+        // V V V  >>> EDIT THIS LINE WITH YOUR RETIREMENT DATE <<< V V V
+        retirementDate: "2026-10-16", 
+        // ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
+
+        bcHolidays: [
+            "2025-11-11", "2025-12-25", "2026-01-01"
+        ],
+        shutdownDays: [
+            "2025-12-26", "2025-12-29", "2025-12-30", "2025-12-31", "2026-01-02"
+        ],
+        vacationDays: [
+            "2025-11-10", "2025-11-17", "2025-12-22", "2025-12-23", "2025-12-24"
+        ]
+    };
+
+    // This function runs automatically when the page has loaded
+    document.addEventListener('DOMContentLoaded', () => {
+        startTimer();
+    });
+
+    function startTimer() {
+        // Set retirement target to 5 PM on the selected day
+        retirementTargetDate = new Date(config.retirementDate + 'T17:00:00');
+        
+        // Combine all non-working days into a single Set for fast lookups
+        const allExclusionDates = [
+            ...config.bcHolidays,
+            ...config.shutdownDays,
+            ...config.vacationDays
+        ];
+        allExclusionDates.forEach(dateStr => nonWorkingDaysSet.add(dateStr));
+
+        // Start the timer loop
+        if (timerInterval) clearInterval(timerInterval);
+        timerInterval = setInterval(updateTimers, 10);
+        updateTimers(); // Run once immediately
+    }
+
+    function updateTimers() {
+        const now = new Date();
+        const diff = retirementTargetDate - now;
+
+        // --- 1. Handle Retired State ---
+        if (diff <= 0) {
+            clearInterval(timerInterval);
+            document.getElementById('countdown-screen').classList.add('retired');
+            document.getElementById('calendar-timer').textContent = "0:00:00:00.00";
+            document.getElementById('work-timer').style.display = 'none';
+            document.querySelector('.timer-label[style*="margin-top: 50px"]').style.display = 'none';
+            document.getElementById('congrats-message').style.display = 'block';
+            return;
+        }
+
+        // --- 2. Update Calendar Timer ---
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+        const minutes = Math.floor((diff / (1000 * 60)) % 60);
+        const seconds = Math.floor((diff / 1000) % 60);
+        const hundredths = Math.floor((diff % 1000) / 10);
+
+        document.getElementById('calendar-timer').textContent = 
+            `${days}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
+
+        // --- 3. Update Working Time Timer ---
+        const workDayStartHour = 9;
+        const workDayEndHour = 17;
+        const dayOfWeek = now.getDay();
+        const currentHour = now.getHours();
+        const nowStr = now.toISOString().split('T')[0];
+        
+        const isCurrentlyWorkTime = (
+            dayOfWeek > 0 && dayOfWeek < 6 && // Mon-Fri
+            !nonWorkingDaysSet.has(nowStr) &&  // Not a holiday/vacation
+            currentHour >= workDayStartHour && currentHour < workDayEndHour // 9am-5pm
+        );
+
+        if (isCurrentlyWorkTime) {
+            let totalWorkSeconds = 0;
+            const endOfWorkToday = new Date(now);
+            endOfWorkToday.setHours(workDayEndHour, 0, 0, 0);
+            totalWorkSeconds += (endOfWorkToday - now) / 1000;
+
+            let currentDate = new Date(now);
+            currentDate.setDate(currentDate.getDate() + 1);
+            currentDate.setHours(0, 0, 0, 0);
+
+            const retirementDayStart = new Date(retirementTargetDate);
+            retirementDayStart.setHours(0, 0, 0, 0);
+
+            while (currentDate <= retirementDayStart) {
+                const loopDayOfWeek = currentDate.getDay();
+                const isWeekend = (loopDayOfWeek === 0 || loopDayOfWeek === 6);
+                const loopDateStr = currentDate.toISOString().split('T')[0];
+
+                if (!isWeekend && !nonWorkingDaysSet.has(loopDateStr)) {
+                    totalWorkSeconds += (workDayEndHour - workDayStartHour) * 3600;
+                }
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+
+            const workDayInSeconds = 8 * 3600;
+            const workDays = Math.floor(totalWorkSeconds / workDayInSeconds);
+            let remainder = totalWorkSeconds % workDayInSeconds;
+            const workHours = Math.floor(remainder / 3600);
+            remainder %= 3600;
+            const workMinutes = Math.floor(remainder / 60);
+            const workSeconds = Math.floor(remainder % 60);
+
+            lastWorkTimeDisplay = 
+                `${workDays}d ${String(workHours).padStart(2, '0')}h ${String(workMinutes).padStart(2, '0')}m ${String(workSeconds).padStart(2, '0')}s`;
+            document.getElementById('work-timer').textContent = lastWorkTimeDisplay;
+
+        } else {
+            document.getElementById('work-timer').textContent = lastWorkTimeDisplay;
+        }
+    }
+</script>
+
+</body>
+</html>
