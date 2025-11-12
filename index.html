@@ -176,7 +176,7 @@
         if (diff <= 0) { /* ... retired state logic (unchanged) ... */
             clearInterval(timerInterval);
             document.getElementById('countdown-screen').classList.add('retired');
-            document.getElementById('calendar-timer').textContent = "0:00:00:00.00";
+            document.getElementById('calendar-timer').textContent = "0:00:00:00.0";
             document.getElementById('work-timer').style.display = 'none';
             document.querySelector('.timer-label[style*="margin-top: 50px"]').style.display = 'none';
             document.getElementById('congrats-message').style.display = 'block';
@@ -215,4 +215,5 @@
 
 </body>
 </html>
+
 
